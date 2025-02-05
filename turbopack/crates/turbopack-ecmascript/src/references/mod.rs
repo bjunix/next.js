@@ -29,6 +29,7 @@ use once_cell::sync::Lazy;
 use parking_lot::Mutex;
 use regex::Regex;
 use rustc_hash::FxHashMap;
+use serde::{Deserialize, Serialize};
 use sourcemap::decode_data_url;
 use swc_core::{
     atoms::JsWord,
@@ -49,7 +50,10 @@ use swc_core::{
 };
 use tracing::Instrument;
 use turbo_rcstr::RcStr;
-use turbo_tasks::{FxIndexSet, ResolvedVc, TryJoinIterExt, Upcast, Value, ValueToString, Vc};
+use turbo_tasks::{
+    trace::TraceRawVcs, FxIndexSet, NonLocalValue, ResolvedVc, TaskInput, TryJoinIterExt, Upcast,
+    Value, ValueToString, Vc,
+};
 use turbo_tasks_fs::FileSystemPath;
 use turbopack_core::{
     compile_time_info::{
@@ -1252,7 +1256,7 @@ pub(crate) async fn analyse_ecmascript_module_internal(
                     if let Some(&r) = import_references.get(esm_reference_index) {
                         if let Some("__turbopack_module_id__") = export.as_deref() {
                             analysis.add_reference(
-                                EsmModuleIdAssetReference::new(*r, Vc::cell(ast_path))
+                                EsmModuleIdAssetReference::new(*r, ast_path.into())
                                     .to_resolved()
                                     .await?,
                             )
@@ -1465,7 +1469,7 @@ async fn handle_call<G: Fn(Vec<Effect>) + Send + Sync>(
                                 *origin,
                                 Request::parse(Value::new(pat)),
                                 compile_time_info.environment().rendering(),
-                                Vc::cell(ast_path.to_vec()),
+                                ast_path.to_vec().into(),
                                 issue_source(source, span),
                                 in_try,
                                 url_rewrite_behavior.unwrap_or(UrlRewriteBehavior::Relative),
@@ -1500,7 +1504,7 @@ async fn handle_call<G: Fn(Vec<Effect>) + Send + Sync>(
                             WorkerAssetReference::new(
                                 *origin,
                                 Request::parse(Value::new(pat)),
-                                Vc::cell(ast_path.to_vec()),
+                                ast_path.to_vec().into(),
                                 issue_source(source, span),
                                 in_try,
                             )
@@ -1599,7 +1603,7 @@ async fn handle_call<G: Fn(Vec<Effect>) + Send + Sync>(
                     EsmAsyncAssetReference::new(
                         *origin,
                         Request::parse(Value::new(pat)),
-                        Vc::cell(ast_path.to_vec()),
+                        ast_path.to_vec().into(),
                         issue_source(source, span),
                         Value::new(import_annotations),
                         in_try,
@@ -1641,7 +1645,7 @@ async fn handle_call<G: Fn(Vec<Effect>) + Send + Sync>(
                     CjsRequireAssetReference::new(
                         *origin,
                         Request::parse(Value::new(pat)),
-                        Vc::cell(ast_path.to_vec()),
+                        ast_path.to_vec().into(),
                         issue_source(source, span),
                         in_try,
                     )
@@ -1695,7 +1699,7 @@ async fn handle_call<G: Fn(Vec<Effect>) + Send + Sync>(
                     CjsRequireResolveAssetReference::new(
                         *origin,
                         Request::parse(Value::new(pat)),
-                        Vc::cell(ast_path.to_vec()),
+                        ast_path.to_vec().into(),
                         issue_source(source, span),
                         in_try,
                     )
@@ -1741,7 +1745,7 @@ async fn handle_call<G: Fn(Vec<Effect>) + Send + Sync>(
                     options.dir,
                     options.include_subdirs,
                     Vc::cell(options.filter),
-                    Vc::cell(ast_path.to_vec()),
+                    ast_path.to_vec().into(),
                     Some(issue_source(source, span)),
                     in_try,
                 )
@@ -3314,9 +3318,15 @@ async fn resolve_as_webpack_runtime(
     }
 }
 
-#[turbo_tasks::value(transparent)]
-#[derive(Hash, Debug, Clone)]
+#[derive(Hash, Debug, Clone, Eq, Serialize, Deserialize, PartialEq, TraceRawVcs)]
 pub struct AstPath(#[turbo_tasks(trace_ignore)] Vec<AstParentKind>);
+
+impl TaskInput for AstPath {
+    fn is_transient(&self) -> bool {
+        false
+    }
+}
+unsafe impl NonLocalValue for AstPath {}
 
 impl Deref for AstPath {
     type Target = [AstParentKind];
