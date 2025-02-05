@@ -1,7 +1,10 @@
 import { constants as FS, promises as fs } from 'fs'
 import path from 'path'
 import url from 'url'
-import { SourceMapConsumer } from 'next/dist/compiled/source-map08'
+import {
+  SourceMapConsumer,
+  type BasicSourceMapConsumer,
+} from 'next/dist/compiled/source-map08'
 import type { StackFrame } from 'next/dist/compiled/stacktrace-parser'
 import { getSourceMapFromFile } from '../internal/helpers/get-source-map-from-file'
 import { launchEditor } from '../internal/helpers/launchEditor'
@@ -83,7 +86,13 @@ async function findOriginalSourcePositionAndContent(
   sourceMap: RawSourceMap,
   position: { line: number; column: number | null }
 ): Promise<SourceAttributes | null> {
-  const consumer = await new SourceMapConsumer(sourceMap)
+  let consumer: BasicSourceMapConsumer
+  try {
+    consumer = await new SourceMapConsumer(sourceMap)
+  } catch (cause) {
+    throw new Error(`${sourceMap.file}: Invalid source map`, { cause })
+  }
+
   try {
     const sourcePosition = consumer.originalPositionFor({
       line: position.line,
