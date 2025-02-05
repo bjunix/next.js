@@ -473,8 +473,7 @@ export function getOverlayMiddleware(options: {
           })
         )
       } catch (err) {
-        console.log('Failed to parse source map:', err)
-        return internalServerError(res)
+        return internalServerError(res, err)
       }
     } else if (pathname === '/__nextjs_launch-editor') {
       const frame = {
@@ -557,9 +556,7 @@ export function getSourceMapMiddleware(options: {
         },
       })
     } catch (error) {
-      console.error('Failed to get source map:', error)
-
-      return internalServerError(res)
+      return internalServerError(res, error)
     }
 
     if (!source) {
